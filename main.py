@@ -437,6 +437,12 @@ def main():
         print("Set it in Render dashboard or export BOT_TOKEN='your_token'")
         return
 
+    # Ensure an event loop exists (required for Python 3.14+)
+    try:
+        asyncio.get_event_loop()
+    except RuntimeError:
+        asyncio.set_event_loop(asyncio.new_event_loop())
+
     app = Application.builder().token(BOT_TOKEN).build()
 
     # Error handler — prevents crashes
