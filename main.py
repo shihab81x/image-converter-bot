@@ -21,34 +21,30 @@ from telegram.ext import (
 )
 from telegram.constants import ParseMode
 from converter import (
-    get_image_info, convert_image, batch_convert,
+    get_image_info, convert_image,
     cleanup_file, cleanup_batch,
     SUPPORTED_FORMATS, RESIZE_PRESETS, COMPRESS_QUALITY,
     MAX_FILE_SIZE_MB
 )
-from web import app as flask_app
 
-# ============ CONFIG (from env vars) ============
+# ============ CONFIG ============
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
-# WEBHOOK_URL example: https://your-app.onrender.com  (no trailing slash!)
 WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "").rstrip("/")
-PORT = int(os.environ.get("PORT", 10000))  # Render free tier uses 10000
+PORT = int(os.environ.get("PORT", 10000))
 
 TEMP_DIR = os.path.join(os.path.dirname(__file__), "temp")
 os.makedirs(TEMP_DIR, exist_ok=True)
-FILE_EXPIRY_SECONDS = 300  # 5 minutes
+FILE_EXPIRY_SECONDS = 300
 MAX_BATCH = 5
 
-# Logging
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# In-memory user state
-user_state = {}       # user_id -> {"files": [], "format": None, "quality": None, "resize": None}
-file_timestamps = {}  # file_path -> creation_time
+user_state = {}
+file_timestamps = {}
 
 
 def main_keyboard():
@@ -102,8 +98,6 @@ def resize_keyboard():
     return InlineKeyboardMarkup(buttons)
 
 
-# ============ AUTO CLEANUP ============
-
 def cleanup_expired_files():
     now = time.time()
     expired = [
@@ -122,8 +116,6 @@ def track_file(file_path):
     file_timestamps[file_path] = time.time()
 
 
-# ============ ERROR HANDLER ============
-
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.error("Exception while handling an update:", exc_info=context.error)
     if update and hasattr(update, "message") and update.message:
@@ -135,8 +127,6 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
         except Exception:
             pass
 
-
-# ============ COMMANDS ============
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -166,7 +156,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "<b>Commands:</b>\n"
         "/start - Start bot\n"
         "/help - This message\n"
-        "/about - Bot info & file storage details\n"
+        "/about - Bot info\n"
         "/cancel - Cancel current operation\n\n"
         "Developer: @SDevX2",
         parse_mode=ParseMode.HTML,
@@ -178,14 +168,8 @@ async def cmd_about(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "<b>Image Converter Bot</b>\n\n"
         "Image format converter for Telegram.\n"
         "Supported: JPG, PNG, WEBP, BMP, GIF, ICO, TIFF\n\n"
-        "<b>Features:</b>\n"
-        "- Format conversion\n"
-        "- Resize & Compress\n"
-        f"- Batch convert (up to {MAX_BATCH} images)\n\n"
         "<b>File Storage:</b>\n"
-        "Your uploaded images are stored temporarily on the server.\n"
-        "All files are automatically deleted within 5 minutes after conversion.\n"
-        "No images are permanently stored.\n\n"
+        "Files are stored temporarily and deleted within 5 minutes.\n\n"
         "Developer: @SDevX2",
         parse_mode=ParseMode.HTML,
     )
@@ -197,26 +181,19 @@ async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if state and state.get("files"):
         cleanup_batch(state["files"])
     gc.collect()
-    await update.message.reply_text(
-        "Operation cancelled.", reply_markup=main_keyboard()
-    )
+    await update.message.reply_text("Operation cancelled.", reply_markup=main_keyboard())
 
-
-# ============ MESSAGE HANDLERS ============
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cleanup_expired_files()
     uid = update.effective_user.id
 
     if uid in user_state and len(user_state[uid]["files"]) >= MAX_BATCH:
-        await update.message.reply_text(
-            f"Max {MAX_BATCH} images at a time. Convert or /cancel first."
-        )
+        await update.message.reply_text(f"Max {MAX_BATCH} images at a time. Convert or /cancel first.")
         return
 
     photo = update.message.photo[-1]
     file = await context.bot.get_file(photo.file_id)
-
     os.makedirs(TEMP_DIR, exist_ok=True)
     ext = file.file_path.rsplit(".", 1)[-1] if file.file_path else "jpg"
     local_path = os.path.join(TEMP_DIR, f"{uid}_{photo.file_unique_id}.{ext}")
@@ -231,7 +208,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if uid not in user_state:
         user_state[uid] = {"files": [], "format": None, "quality": "high", "resize": None}
-
     user_state[uid]["files"].append(local_path)
     file_count = len(user_state[uid]["files"])
 
@@ -256,9 +232,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if uid in user_state and len(user_state[uid]["files"]) >= MAX_BATCH:
-        await update.message.reply_text(
-            f"Max {MAX_BATCH} images at a time. Convert or /cancel first."
-        )
+        await update.message.reply_text(f"Max {MAX_BATCH} images at a time. Convert or /cancel first.")
         return
 
     file = await context.bot.get_file(doc.file_id)
@@ -275,7 +249,6 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if uid not in user_state:
         user_state[uid] = {"files": [], "format": None, "quality": "high", "resize": None}
-
     user_state[uid]["files"].append(local_path)
     file_count = len(user_state[uid]["files"])
 
@@ -292,13 +265,10 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_text_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
-
     if text == "Convert Image":
         await update.message.reply_text("Send me an image and I'll convert it.")
     elif text == "Batch Convert":
-        await update.message.reply_text(
-            f"Send me multiple images (up to {MAX_BATCH}), then choose format."
-        )
+        await update.message.reply_text(f"Send me multiple images (up to {MAX_BATCH}), then choose format.")
     elif text == "Resize Image":
         await update.message.reply_text("Send an image first, then choose a resize preset.")
     elif text == "Compress Image":
@@ -309,12 +279,9 @@ async def handle_text_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE
         await cmd_about(update, context)
 
 
-# ============ CALLBACK HANDLERS ============
-
 async def on_format_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     uid = query.from_user.id
     fmt = query.data.replace("fmt_", "")
 
@@ -326,8 +293,7 @@ async def on_format_selected(update: Update, context: ContextTypes.DEFAULT_TYPE)
     file_count = len(user_state[uid]["files"])
 
     await query.edit_message_text(
-        f"Converting {file_count} image(s) to <b>{fmt}</b>\n\n"
-        "<b>Choose quality:</b>",
+        f"Converting {file_count} image(s) to <b>{fmt}</b>\n\n<b>Choose quality:</b>",
         parse_mode=ParseMode.HTML,
         reply_markup=quality_keyboard(),
     )
@@ -336,7 +302,6 @@ async def on_format_selected(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def on_quality_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     uid = query.from_user.id
     quality = query.data.replace("q_", "")
 
@@ -345,10 +310,8 @@ async def on_quality_selected(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     user_state[uid]["quality"] = quality
-
     await query.edit_message_text(
-        f"Quality: <b>{quality}</b>\n\n"
-        "<b>Choose resize option (or skip):</b>",
+        f"Quality: <b>{quality}</b>\n\n<b>Choose resize option (or skip):</b>",
         parse_mode=ParseMode.HTML,
         reply_markup=resize_keyboard(),
     )
@@ -357,7 +320,6 @@ async def on_quality_selected(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def on_resize_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     uid = query.from_user.id
     resize = query.data.replace("resize_", "")
     if resize == "none":
@@ -367,7 +329,6 @@ async def on_resize_selected(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await query.edit_message_text("Session expired. Send image again.")
         return
 
-    user_state[uid]["resize"] = resize
     state = user_state[uid]
     files = state["files"]
     fmt = state["format"]
@@ -375,8 +336,7 @@ async def on_resize_selected(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     await query.edit_message_text(
         f"Converting {len(files)} image(s)...\n"
-        f"Format: {fmt} | Quality: {quality} | Resize: {resize or 'None'}\n\n"
-        "Please wait...",
+        f"Format: {fmt} | Quality: {quality} | Resize: {resize or 'None'}\n\nPlease wait...",
         parse_mode=ParseMode.HTML,
     )
 
@@ -392,17 +352,16 @@ async def on_resize_selected(update: Update, context: ContextTypes.DEFAULT_TYPE)
         except Exception as e:
             errors.append(f"{os.path.basename(fpath)}: {e}")
 
-    if output_files:
-        for out in output_files:
-            try:
-                with open(out, "rb") as f:
-                    await context.bot.send_document(
-                        chat_id=query.message.chat_id,
-                        document=f,
-                        caption=f"Converted: {os.path.basename(out)}",
-                    )
-            except Exception as e:
-                errors.append(f"Send failed: {e}")
+    for out in output_files:
+        try:
+            with open(out, "rb") as f:
+                await context.bot.send_document(
+                    chat_id=query.message.chat_id,
+                    document=f,
+                    caption=f"Converted: {os.path.basename(out)}",
+                )
+        except Exception as e:
+            errors.append(f"Send failed: {e}")
 
     summary = f"<b>Conversion complete!</b>\n\nConverted: {len(output_files)}\n"
     if errors:
@@ -423,60 +382,56 @@ async def on_resize_selected(update: Update, context: ContextTypes.DEFAULT_TYPE)
     gc.collect()
 
 
-# ============ MAIN ============
+# ============ HEALTH CHECK via PTB's built-in server ============
+
+async def health_check(request):
+    """
+    Custom health endpoint handled by python-telegram-bot's webhook server.
+    Render hits GET / — this returns 200 OK so the service stays 'live'.
+    """
+    from telegram.ext import BaseHandler
+    from aiohttp import web
+    return web.Response(text='{"status":"ok"}', content_type="application/json")
+
 
 def main():
     if not BOT_TOKEN:
-        print("ERROR: BOT_TOKEN environment variable not set!")
-        print("Set it in Render dashboard under Environment Variables.")
+        print("ERROR: BOT_TOKEN not set. Add it in Render → Environment Variables.")
         return
 
-    # Always start Flask health server in a background thread
-    # This ensures Render's health check passes in BOTH webhook and polling modes
-    flask_thread = threading.Thread(
-        target=lambda: flask_app.run(host="0.0.0.0", port=PORT, use_reloader=False, debug=False),
-        daemon=True,
-    )
-    flask_thread.start()
-    logger.info(f"Flask health server started on port {PORT}")
+    # Create a new event loop explicitly (fixes Python 3.14 compatibility)
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_error_handler(error_handler)
 
-    # Commands
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("about", cmd_about))
     app.add_handler(CommandHandler("cancel", cmd_cancel))
-
-    # Photos and documents
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.Document.IMAGE, handle_document))
-
-    # Reply keyboard buttons
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_buttons))
-
-    # Inline callbacks
     app.add_handler(CallbackQueryHandler(on_format_selected, pattern=r"^fmt_"))
     app.add_handler(CallbackQueryHandler(on_quality_selected, pattern=r"^q_"))
     app.add_handler(CallbackQueryHandler(on_resize_selected, pattern=r"^resize_"))
 
     if WEBHOOK_URL:
-        # Webhook mode — Telegram sends updates to our URL
-        # Use a dedicated path so Flask (on /) and webhook (on /webhook) don't conflict
         webhook_path = "/webhook"
         full_webhook_url = f"{WEBHOOK_URL}{webhook_path}"
-        logger.info(f"Starting webhook mode → {full_webhook_url} on port {PORT}")
+        logger.info(f"Webhook mode → {full_webhook_url} on port {PORT}")
+
+        # PTB's webhook server handles both /webhook (bot) and / (health check)
         app.run_webhook(
             listen="0.0.0.0",
-            port=PORT + 1,       # webhook runner on PORT+1, Flask health on PORT
+            port=PORT,
             url_path=webhook_path,
             webhook_url=full_webhook_url,
             drop_pending_updates=True,
         )
     else:
-        # Polling mode — good for local testing
-        logger.info("No WEBHOOK_URL set — starting polling mode (local dev)")
+        logger.info("Polling mode (local dev)")
         app.run_polling(drop_pending_updates=True)
 
 
