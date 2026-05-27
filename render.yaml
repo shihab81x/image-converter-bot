@@ -11,4 +11,6 @@ services:
         sync: false
       - key: PYTHON_VERSION
         value: "3.11.9"
+      - key: PORT
+        value: "10000"
     plan: free
