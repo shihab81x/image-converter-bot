@@ -15,7 +15,6 @@ START_TIME = time.time()
 @app.route("/")
 def home():
     uptime = int(time.time() - START_TIME)
-
     return jsonify({
         "status": "online",
         "service": "Image Converter Bot",
@@ -26,9 +25,7 @@ def home():
 
 @app.route("/health")
 def health():
-    return jsonify({
-        "status": "healthy"
-    }), 200
+    return jsonify({"status": "healthy"}), 200
 
 
 @app.route("/ping")
@@ -38,21 +35,16 @@ def ping():
 
 @app.errorhandler(404)
 def not_found(error):
-    return jsonify({
-        "error": "Not Found"
-    }), 404
+    return jsonify({"error": "Not Found"}), 404
 
 
 @app.errorhandler(500)
 def internal_error(error):
-    return jsonify({
-        "error": "Internal Server Error"
-    }), 500
+    return jsonify({"error": "Internal Server Error"}), 500
 
 
 def run_web():
-    port = int(os.environ.get("PORT", 8080))
-
+    port = int(os.environ.get("PORT", 10000))
     app.run(
         host="0.0.0.0",
         port=port,
