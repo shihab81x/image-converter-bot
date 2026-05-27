@@ -10,6 +10,7 @@ import gc
 import time
 import logging
 import asyncio
+import threading
 from telegram import (
     Update, InlineKeyboardButton, InlineKeyboardMarkup,
     ReplyKeyboardMarkup, KeyboardButton
@@ -25,6 +26,7 @@ from converter import (
     SUPPORTED_FORMATS, RESIZE_PRESETS, COMPRESS_QUALITY,
     MAX_FILE_SIZE_MB
 )
+from web import app as flask_app
 
 # ============ CONFIG (from env vars) ============
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
@@ -470,20 +472,25 @@ def main():
 
     # ============ WEBHOOK MODE (for Render + Cloudflare) ============
     if WEBHOOK_URL:
-        webhook_path = f"/webhook/{BOT_TOKEN}"
-        full_url = f"{WEBHOOK_URL}{webhook_path}"
         print(f"Starting webhook mode on port {PORT}...")
-        print(f"Webhook URL: {full_url}")
+        print(f"Webhook URL: {WEBHOOK_URL}")
+        # url_path="/" so Render health check (GET /) and Telegram webhook (POST /) both work
         app.run_webhook(
             listen="0.0.0.0",
             port=PORT,
-            url_path=webhook_path,
-            webhook_url=full_url,
+            url_path="/",
+            webhook_url=WEBHOOK_URL,
             drop_pending_updates=True,
         )
     else:
-        # Fallback to polling (for local testing)
+        # Polling mode — start Flask health server so Render health check passes
         print("No WEBHOOK_URL set — starting polling mode...")
+        flask_thread = threading.Thread(
+            target=lambda: flask_app.run(host="0.0.0.0", port=PORT, use_reloader=False),
+            daemon=True,
+        )
+        flask_thread.start()
+        logger.info(f"Flask health server started on port {PORT}")
         app.run_polling(drop_pending_updates=True)
 
 
