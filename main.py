@@ -2,7 +2,7 @@
 """
 Image Converter Bot for Telegram
 Converts images between formats: JPG, PNG, WEBP, BMP, GIF, ICO, TIFF
-Optimized for Render free tier (512MB RAM) + Cloudflare
+Optimized for Render free tier (512MB RAM)
 """
 
 import os
@@ -30,13 +30,14 @@ from web import app as flask_app
 
 # ============ CONFIG (from env vars) ============
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
-WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "")  # e.g. https://your-app.onrender.com
-PORT = int(os.environ.get("PORT", 8080))
+# WEBHOOK_URL example: https://your-app.onrender.com  (no trailing slash!)
+WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "").rstrip("/")
+PORT = int(os.environ.get("PORT", 10000))  # Render free tier uses 10000
 
 TEMP_DIR = os.path.join(os.path.dirname(__file__), "temp")
 os.makedirs(TEMP_DIR, exist_ok=True)
 FILE_EXPIRY_SECONDS = 300  # 5 minutes
-MAX_BATCH = 5  # reduced from 10 for RAM safety
+MAX_BATCH = 5
 
 # Logging
 logging.basicConfig(
@@ -46,7 +47,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # In-memory user state
-user_state = {}  # user_id -> {"files": [], "format": None, "quality": None, "resize": None}
+user_state = {}       # user_id -> {"files": [], "format": None, "quality": None, "resize": None}
 file_timestamps = {}  # file_path -> creation_time
 
 
@@ -90,7 +91,7 @@ def quality_keyboard():
 def resize_keyboard():
     buttons = []
     row = []
-    for name, (w, h) in RESIZE_PRESETS.items():
+    for name in RESIZE_PRESETS:
         row.append(InlineKeyboardButton(name, callback_data=f"resize_{name}"))
         if len(row) == 2:
             buttons.append(row)
@@ -104,7 +105,6 @@ def resize_keyboard():
 # ============ AUTO CLEANUP ============
 
 def cleanup_expired_files():
-    """Delete temp files older than 5 minutes."""
     now = time.time()
     expired = [
         fpath for fpath, ts in file_timestamps.items()
@@ -114,7 +114,7 @@ def cleanup_expired_files():
         cleanup_file(fpath)
         file_timestamps.pop(fpath, None)
     if expired:
-        gc.collect()  # free memory after cleanup
+        gc.collect()
         logger.info(f"Auto-cleaned {len(expired)} expired files")
 
 
@@ -125,15 +125,14 @@ def track_file(file_path):
 # ============ ERROR HANDLER ============
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Log errors and don't crash the bot."""
     logger.error("Exception while handling an update:", exc_info=context.error)
-    if update and hasattr(update, 'message') and update.message:
+    if update and hasattr(update, "message") and update.message:
         try:
             await update.message.reply_text(
                 "Something went wrong. Please try again.",
                 reply_markup=main_keyboard()
             )
-        except:
+        except Exception:
             pass
 
 
@@ -209,7 +208,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cleanup_expired_files()
     uid = update.effective_user.id
 
-    # Check batch limit
     if uid in user_state and len(user_state[uid]["files"]) >= MAX_BATCH:
         await update.message.reply_text(
             f"Max {MAX_BATCH} images at a time. Convert or /cancel first."
@@ -226,7 +224,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     track_file(local_path)
 
     info = get_image_info(local_path)
-
     if "error" in info:
         await update.message.reply_text(f"Error: {info['error']}")
         cleanup_file(local_path)
@@ -258,7 +255,6 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Please send an image file (JPG, PNG, WEBP, etc.)")
         return
 
-    # Check batch limit
     if uid in user_state and len(user_state[uid]["files"]) >= MAX_BATCH:
         await update.message.reply_text(
             f"Max {MAX_BATCH} images at a time. Convert or /cancel first."
@@ -384,7 +380,6 @@ async def on_resize_selected(update: Update, context: ContextTypes.DEFAULT_TYPE)
         parse_mode=ParseMode.HTML,
     )
 
-    # Convert one at a time to save RAM
     output_files = []
     errors = []
 
@@ -393,11 +388,10 @@ async def on_resize_selected(update: Update, context: ContextTypes.DEFAULT_TYPE)
             out = convert_image(fpath, fmt, quality, resize)
             track_file(out)
             output_files.append(out)
-            gc.collect()  # gc after each conversion
+            gc.collect()
         except Exception as e:
             errors.append(f"{os.path.basename(fpath)}: {e}")
 
-    # Send converted files
     if output_files:
         for out in output_files:
             try:
@@ -410,10 +404,9 @@ async def on_resize_selected(update: Update, context: ContextTypes.DEFAULT_TYPE)
             except Exception as e:
                 errors.append(f"Send failed: {e}")
 
-    # Summary
     summary = f"<b>Conversion complete!</b>\n\nConverted: {len(output_files)}\n"
     if errors:
-        summary += f"\nErrors:\n" + "\n".join(errors[:5])
+        summary += "\nErrors:\n" + "\n".join(errors[:5])
 
     await context.bot.send_message(
         chat_id=query.message.chat_id,
@@ -422,7 +415,6 @@ async def on_resize_selected(update: Update, context: ContextTypes.DEFAULT_TYPE)
         reply_markup=main_keyboard(),
     )
 
-    # Cleanup
     for f in files + output_files:
         file_timestamps.pop(f, None)
     cleanup_batch(files)
@@ -436,18 +428,19 @@ async def on_resize_selected(update: Update, context: ContextTypes.DEFAULT_TYPE)
 def main():
     if not BOT_TOKEN:
         print("ERROR: BOT_TOKEN environment variable not set!")
-        print("Set it in Render dashboard or export BOT_TOKEN='your_token'")
+        print("Set it in Render dashboard under Environment Variables.")
         return
 
-    # Ensure an event loop exists (required for Python 3.14+)
-    try:
-        asyncio.get_event_loop()
-    except RuntimeError:
-        asyncio.set_event_loop(asyncio.new_event_loop())
+    # Always start Flask health server in a background thread
+    # This ensures Render's health check passes in BOTH webhook and polling modes
+    flask_thread = threading.Thread(
+        target=lambda: flask_app.run(host="0.0.0.0", port=PORT, use_reloader=False, debug=False),
+        daemon=True,
+    )
+    flask_thread.start()
+    logger.info(f"Flask health server started on port {PORT}")
 
     app = Application.builder().token(BOT_TOKEN).build()
-
-    # Error handler — prevents crashes
     app.add_error_handler(error_handler)
 
     # Commands
@@ -461,36 +454,29 @@ def main():
     app.add_handler(MessageHandler(filters.Document.IMAGE, handle_document))
 
     # Reply keyboard buttons
-    app.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND, handle_text_buttons
-    ))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_buttons))
 
     # Inline callbacks
     app.add_handler(CallbackQueryHandler(on_format_selected, pattern=r"^fmt_"))
     app.add_handler(CallbackQueryHandler(on_quality_selected, pattern=r"^q_"))
     app.add_handler(CallbackQueryHandler(on_resize_selected, pattern=r"^resize_"))
 
-    # ============ WEBHOOK MODE (for Render + Cloudflare) ============
     if WEBHOOK_URL:
-        print(f"Starting webhook mode on port {PORT}...")
-        print(f"Webhook URL: {WEBHOOK_URL}")
-        # url_path="/" so Render health check (GET /) and Telegram webhook (POST /) both work
+        # Webhook mode — Telegram sends updates to our URL
+        # Use a dedicated path so Flask (on /) and webhook (on /webhook) don't conflict
+        webhook_path = "/webhook"
+        full_webhook_url = f"{WEBHOOK_URL}{webhook_path}"
+        logger.info(f"Starting webhook mode → {full_webhook_url} on port {PORT}")
         app.run_webhook(
             listen="0.0.0.0",
-            port=PORT,
-            url_path="/",
-            webhook_url=WEBHOOK_URL,
+            port=PORT + 1,       # webhook runner on PORT+1, Flask health on PORT
+            url_path=webhook_path,
+            webhook_url=full_webhook_url,
             drop_pending_updates=True,
         )
     else:
-        # Polling mode — start Flask health server so Render health check passes
-        print("No WEBHOOK_URL set — starting polling mode...")
-        flask_thread = threading.Thread(
-            target=lambda: flask_app.run(host="0.0.0.0", port=PORT, use_reloader=False),
-            daemon=True,
-        )
-        flask_thread.start()
-        logger.info(f"Flask health server started on port {PORT}")
+        # Polling mode — good for local testing
+        logger.info("No WEBHOOK_URL set — starting polling mode (local dev)")
         app.run_polling(drop_pending_updates=True)
 
 
