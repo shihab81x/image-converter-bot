@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
 """
-✨ Image Converter Bot — Premium Edition
-Supports: JPG · PNG · WEBP · BMP · GIF · ICO · TIFF
-Developer: @SDevX2
+✨ Image Converter Bot — Multi-User Edition
+Supports concurrent processing for multiple users
 """
 
 import os
 import gc
-import io
 import time
 import logging
 import asyncio
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from PIL import Image
 from telegram import (
     Update, InlineKeyboardButton, InlineKeyboardMarkup,
@@ -39,7 +38,7 @@ RESIZE_PRESETS    = {
     "25%":    0.25,
     "50%":    0.50,
     "75%":    0.75,
-    "1080p":  1080,   # height based
+    "1080p":  1080,
 }
 COMPRESS_QUALITY = {
     "low":     40,
@@ -58,6 +57,9 @@ logger = logging.getLogger(__name__)
 
 user_state: dict = {}
 file_timestamps: dict = {}
+
+# 🔥 THREAD POOL for non-blocking image processing
+executor = ThreadPoolExecutor(max_workers=4)
 
 
 # ══════════════════════════════════════════════
@@ -144,7 +146,7 @@ def output_keyboard() -> InlineKeyboardMarkup:
 
 
 # ══════════════════════════════════════════════
-#  CONVERTER ENGINE (Built-in)
+#  CONVERTER ENGINE (CPU-heavy, runs in thread)
 # ══════════════════════════════════════════════
 
 def get_image_info(path: str) -> dict:
@@ -161,18 +163,16 @@ def get_image_info(path: str) -> dict:
         return {"error": str(e)}
 
 
-def convert_image(input_path: str, fmt: str, quality: str, resize: str | None) -> str:
-    """Convert image and return output path."""
+def convert_image_sync(input_path: str, fmt: str, quality: str, resize: str | None) -> str:
+    """SYNC function — runs in ThreadPool so it doesn't block the bot."""
     with Image.open(input_path) as img:
         img = img.copy()
 
-        # Auto-downscale if too large
         if img.width * img.height > MAX_PIXELS:
             ratio = (MAX_PIXELS / (img.width * img.height)) ** 0.5
             new_size = (int(img.width * ratio), int(img.height * ratio))
             img = img.resize(new_size, Image.Resampling.LANCZOS)
 
-        # Resize
         if resize and resize != "none":
             if resize == "1080p":
                 ratio = 1080 / img.height
@@ -182,7 +182,6 @@ def convert_image(input_path: str, fmt: str, quality: str, resize: str | None) -
                 new_size = (int(img.width * ratio), int(img.height * ratio))
             img = img.resize(new_size, Image.Resampling.LANCZOS)
 
-        # Determine format
         fmt_lower = fmt.lower()
         if fmt_lower in ("jpg", "jpeg"):
             pil_fmt = "JPEG"
@@ -222,11 +221,18 @@ def convert_image(input_path: str, fmt: str, quality: str, resize: str | None) -
             ext = "jpg"
             save_kwargs = {"quality": 85}
 
-        # Save
         base = os.path.splitext(os.path.basename(input_path))[0]
         output_path = os.path.join(TEMP_DIR, f"{base}_converted.{ext}")
         img.save(output_path, format=pil_fmt, **save_kwargs)
         return output_path
+
+
+async def convert_image_async(input_path: str, fmt: str, quality: str, resize: str | None) -> str:
+    """ASYNC wrapper — runs sync function in thread pool."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        executor, convert_image_sync, input_path, fmt, quality, resize
+    )
 
 
 def cleanup_file(path: str):
@@ -308,7 +314,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = update.effective_user.first_name or "Friend"
     await update.message.reply_text(
         f"👋 <b>Hey {name}!</b>\n\n"
-        f"🎩 <b>Welcome to Image Converter Bot</b> — Premium Edition!\n\n"
+        f"🎩 <b>Welcome to Image Converter Bot</b> — Multi-User Edition!\n\n"
         f"🔄 <b>Supported Formats:</b>\n"
         f"   JPG · PNG · WEBP · BMP · GIF · ICO · TIFF\n\n"
         f"✨ <b>What I can do:</b>\n"
@@ -316,6 +322,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"   • Resize with 4 presets\n"
         f"   • Compress with quality control\n"
         f"   • Batch convert up to {MAX_BATCH} images\n"
+        f"   • <b>Multiple users at once!</b> 🔥\n"
         f"   • Deliver as separate files or ZIP\n\n"
         f"📦 <b>Max file size:</b> {MAX_FILE_SIZE_MB}MB\n"
         f"🕐 <b>Auto-delete:</b> 5 minutes\n\n"
@@ -353,11 +360,12 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_about(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🤖 <b>Image Converter Bot</b> — Premium Edition\n\n"
+        "🤖 <b>Image Converter Bot</b> — Multi-User Edition\n\n"
         "A powerful image conversion tool built for Telegram.\n\n"
         "🔄 <b>Formats:</b> JPG · PNG · WEBP · BMP · GIF · ICO · TIFF\n"
         "⚙️ <b>Engine:</b> Python · Pillow · python-telegram-bot\n"
-        "☁️ <b>Hosted on:</b> Render (free tier optimized)\n\n"
+        "☁️ <b>Hosted on:</b> Render (free tier optimized)\n"
+        "🧵 <b>Threads:</b> 4 workers for concurrent processing\n\n"
         "🔒 <b>Privacy Policy:</b>\n"
         "Your images are stored temporarily on our server and automatically deleted after 5 minutes. No images are kept permanently.\n\n"
         "👨‍💻 <b>Developer:</b> @SDevX2",
@@ -634,9 +642,10 @@ async def on_output_selected(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     output_files, errors = [], []
 
+    # 🔥 RUN CONVERSION IN THREAD POOL — doesn't block other users!
     for fpath in files:
         try:
-            out = convert_image(fpath, fmt, quality, resize)
+            out = await convert_image_async(fpath, fmt, quality, resize)
             track_file(out)
             output_files.append(out)
             gc.collect()
@@ -709,7 +718,13 @@ def main():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
-    app = Application.builder().token(BOT_TOKEN).build()
+    # 🔥 Enable concurrent updates for multi-user support
+    app = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .concurrent_updates(True)  # ← THIS IS KEY!
+        .build()
+    )
     app.add_error_handler(error_handler)
 
     # Commands
