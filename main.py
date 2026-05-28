@@ -124,7 +124,7 @@ def output_keyboard() -> InlineKeyboardMarkup:
 
 
 # ══════════════════════════════════════════════
-#  CONVERTER ENGINE
+#  CONVERTER ENGINE (Built-in, matches your converter.py)
 # ══════════════════════════════════════════════
 
 def get_image_info(path: str) -> dict:
@@ -142,6 +142,7 @@ def get_image_info(path: str) -> dict:
 
 
 def convert_image_sync(input_path: str, fmt: str, quality: str, resize: str | None) -> str:
+    """Returns: output_path (string) — matches your converter.py"""
     with Image.open(input_path) as img:
         img = img.copy()
 
@@ -193,10 +194,11 @@ def convert_image_sync(input_path: str, fmt: str, quality: str, resize: str | No
         base = os.path.splitext(os.path.basename(input_path))[0]
         output_path = os.path.join(TEMP_DIR, f"{base}_converted.{ext}")
         img.save(output_path, format=pil_fmt, **save_kwargs)
-        return output_path
+        return output_path  # ← String return, matches your converter.py!
 
 
 async def convert_image_async(input_path: str, fmt: str, quality: str, resize: str | None) -> str:
+    """Non-blocking wrapper"""
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(executor, convert_image_sync, input_path, fmt, quality, resize)
 
@@ -270,7 +272,8 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    name = user.first_name if user and user.first_name else "Friend"
+    # ✅ FIX: Handle empty string names properly!
+    name = user.first_name.strip() if user and user.first_name and user.first_name.strip() else "Friend"
     
     text = (
         f"👋 <b>Hey {name}!</b>\n\n"
@@ -579,6 +582,7 @@ async def on_output_selected(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     for fpath in files:
         try:
+            # ✅ String return — matches your converter.py!
             out = await convert_image_async(fpath, fmt, quality, resize)
             track_file(out)
             output_files.append(out)
@@ -637,7 +641,7 @@ async def on_output_selected(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 # ══════════════════════════════════════════════
-#  MAIN — PYTHON 3.14 FIX HERE
+#  MAIN — PYTHON 3.14 FIX
 # ══════════════════════════════════════════════
 
 def main():
@@ -645,7 +649,7 @@ def main():
         print("ERROR: Set BOT_TOKEN environment variable!")
         return
 
-    # ✅ FIX: Explicit event loop for Python 3.14+
+    # ✅ Python 3.14+ event loop fix
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
