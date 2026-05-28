@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Image Converter Bot — Multi-User Premium Edition
+Image Converter Bot — Render Ready
+Multi-user | Webhook | No Termux reference
 """
 
 import os
@@ -33,18 +34,8 @@ MAX_FILE_SIZE_MB    = 20
 MAX_PIXELS          = 16_000_000
 
 SUPPORTED_FORMATS = ["jpg", "jpeg", "png", "webp", "bmp", "gif", "ico", "tiff"]
-RESIZE_PRESETS    = {
-    "25%":    0.25,
-    "50%":    0.50,
-    "75%":    0.75,
-    "1080p":  1080,
-}
-COMPRESS_QUALITY = {
-    "low":     40,
-    "medium":  65,
-    "high":    85,
-    "maximum": 95,
-}
+RESIZE_PRESETS    = {"25%": 0.25, "50%": 0.50, "75%": 0.75, "1080p": 1080}
+COMPRESS_QUALITY  = {"low": 40, "medium": 65, "high": 85, "maximum": 95}
 
 os.makedirs(TEMP_DIR, exist_ok=True)
 
@@ -56,7 +47,6 @@ logger = logging.getLogger(__name__)
 
 user_state: dict = {}
 file_timestamps: dict = {}
-
 executor = ThreadPoolExecutor(max_workers=4)
 
 
@@ -67,9 +57,9 @@ executor = ThreadPoolExecutor(max_workers=4)
 def main_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         [
-            [KeyboardButton("🖼 Convert"),       KeyboardButton("📦 Batch")],
-            [KeyboardButton("📐 Resize"),          KeyboardButton("🗜 Compress")],
-            [KeyboardButton("❓ Help"),            KeyboardButton("ℹ️ About")],
+            [KeyboardButton("🖼 Convert"),  KeyboardButton("📦 Batch")],
+            [KeyboardButton("📐 Resize"),     KeyboardButton("🗜 Compress")],
+            [KeyboardButton("❓ Help"),       KeyboardButton("ℹ️ About")],
         ],
         resize_keyboard=True,
         input_field_placeholder="✨ Drop your image here...",
@@ -77,7 +67,7 @@ def main_keyboard() -> ReplyKeyboardMarkup:
 
 
 def format_keyboard() -> InlineKeyboardMarkup:
-    buttons = [
+    return InlineKeyboardMarkup([
         [
             InlineKeyboardButton("🎨 JPG", callback_data="fmt_jpg"),
             InlineKeyboardButton("🌈 PNG", callback_data="fmt_png"),
@@ -88,45 +78,38 @@ def format_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("🎬 GIF", callback_data="fmt_gif"),
             InlineKeyboardButton("🎯 ICO", callback_data="fmt_ico"),
         ],
-        [
-            InlineKeyboardButton("📷 TIFF", callback_data="fmt_tiff"),
-        ],
-        [
-            InlineKeyboardButton("❌ Cancel", callback_data="action_cancel"),
-        ],
-    ]
-    return InlineKeyboardMarkup(buttons)
+        [InlineKeyboardButton("📷 TIFF", callback_data="fmt_tiff")],
+        [InlineKeyboardButton("❌ Cancel", callback_data="action_cancel")],
+    ])
 
 
 def quality_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("💎 Low (40%)",     callback_data="q_low"),
-            InlineKeyboardButton("🔷 Medium (65%)",   callback_data="q_medium"),
+            InlineKeyboardButton("💎 Low (40%)", callback_data="q_low"),
+            InlineKeyboardButton("🔷 Medium (65%)", callback_data="q_medium"),
         ],
         [
-            InlineKeyboardButton("🔶 High (85%)",    callback_data="q_high"),
-            InlineKeyboardButton("👑 Max (95%)",     callback_data="q_maximum"),
+            InlineKeyboardButton("🔶 High (85%)", callback_data="q_high"),
+            InlineKeyboardButton("👑 Max (95%)", callback_data="q_maximum"),
         ],
-        [
-            InlineKeyboardButton("❌ Cancel", callback_data="action_cancel"),
-        ],
+        [InlineKeyboardButton("❌ Cancel", callback_data="action_cancel")],
     ])
 
 
 def resize_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("📱 25%",   callback_data="resize_25%"),
-            InlineKeyboardButton("📱 50%",   callback_data="resize_50%"),
+            InlineKeyboardButton("📱 25%", callback_data="resize_25%"),
+            InlineKeyboardButton("📱 50%", callback_data="resize_50%"),
         ],
         [
-            InlineKeyboardButton("📱 75%",   callback_data="resize_75%"),
+            InlineKeyboardButton("📱 75%", callback_data="resize_75%"),
             InlineKeyboardButton("🖥 1080p", callback_data="resize_1080p"),
         ],
         [
             InlineKeyboardButton("⏭ Skip Resize", callback_data="resize_none"),
-            InlineKeyboardButton("❌ Cancel",      callback_data="action_cancel"),
+            InlineKeyboardButton("❌ Cancel", callback_data="action_cancel"),
         ],
     ])
 
@@ -135,11 +118,9 @@ def output_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton("📁 Separate Files", callback_data="out_individual"),
-            InlineKeyboardButton("🗜 ZIP Archive",     callback_data="out_zip"),
+            InlineKeyboardButton("🗜 ZIP Archive", callback_data="out_zip"),
         ],
-        [
-            InlineKeyboardButton("❌ Cancel", callback_data="action_cancel"),
-        ],
+        [InlineKeyboardButton("❌ Cancel", callback_data="action_cancel")],
     ])
 
 
@@ -181,41 +162,33 @@ def convert_image_sync(input_path: str, fmt: str, quality: str, resize: str | No
 
         fmt_lower = fmt.lower()
         if fmt_lower in ("jpg", "jpeg"):
-            pil_fmt = "JPEG"
-            ext = "jpg"
+            pil_fmt, ext = "JPEG", "jpg"
             if img.mode in ("RGBA", "P", "LA"):
                 img = img.convert("RGB")
             save_kwargs = {"quality": COMPRESS_QUALITY.get(quality, 85), "optimize": True}
         elif fmt_lower == "png":
-            pil_fmt = "PNG"
-            ext = "png"
+            pil_fmt, ext = "PNG", "png"
             save_kwargs = {"optimize": True}
         elif fmt_lower == "webp":
-            pil_fmt = "WEBP"
-            ext = "webp"
+            pil_fmt, ext = "WEBP", "webp"
             save_kwargs = {"quality": COMPRESS_QUALITY.get(quality, 85), "method": 6}
         elif fmt_lower == "bmp":
-            pil_fmt = "BMP"
-            ext = "bmp"
+            pil_fmt, ext = "BMP", "bmp"
             if img.mode == "RGBA":
                 img = img.convert("RGB")
             save_kwargs = {}
         elif fmt_lower == "gif":
-            pil_fmt = "GIF"
-            ext = "gif"
+            pil_fmt, ext = "GIF", "gif"
             save_kwargs = {}
         elif fmt_lower == "ico":
-            pil_fmt = "ICO"
-            ext = "ico"
+            pil_fmt, ext = "ICO", "ico"
             img = img.convert("RGBA")
             save_kwargs = {}
         elif fmt_lower == "tiff":
-            pil_fmt = "TIFF"
-            ext = "tiff"
+            pil_fmt, ext = "TIFF", "tiff"
             save_kwargs = {}
         else:
-            pil_fmt = "JPEG"
-            ext = "jpg"
+            pil_fmt, ext = "JPEG", "jpg"
             save_kwargs = {"quality": 85}
 
         base = os.path.splitext(os.path.basename(input_path))[0]
@@ -226,9 +199,7 @@ def convert_image_sync(input_path: str, fmt: str, quality: str, resize: str | No
 
 async def convert_image_async(input_path: str, fmt: str, quality: str, resize: str | None) -> str:
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(
-        executor, convert_image_sync, input_path, fmt, quality, resize
-    )
+    return await loop.run_in_executor(executor, convert_image_sync, input_path, fmt, quality, resize)
 
 
 def cleanup_file(path: str):
@@ -277,13 +248,21 @@ def new_state() -> dict:
 
 
 def _quality_label(quality: str) -> str:
-    labels = {
-        "low": "💎 Low (40%)",
-        "medium": "🔷 Medium (65%)",
-        "high": "🔶 High (85%)",
-        "maximum": "👑 Max (95%)",
-    }
+    labels = {"low": "💎 Low (40%)", "medium": "🔷 Medium (65%)", "high": "🔶 High (85%)", "maximum": "👑 Max (95%)"}
     return labels.get(quality, quality)
+
+
+# ══════════════════════════════════════════════
+#  ERROR HANDLER
+# ══════════════════════════════════════════════
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    logger.error("Unhandled exception:", exc_info=context.error)
+    if update and hasattr(update, "message") and update.message:
+        try:
+            await update.message.reply_text("⚠️ Something went wrong. Please try again!", reply_markup=main_keyboard())
+        except Exception:
+            pass
 
 
 # ══════════════════════════════════════════════
@@ -291,10 +270,9 @@ def _quality_label(quality: str) -> str:
 # ══════════════════════════════════════════════
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # 🔥 USER NAME GREETING — এটা কাজ করবে!
     user = update.effective_user
     name = user.first_name if user and user.first_name else "Friend"
-
+    
     text = (
         f"👋 <b>Hey {name}!</b>\n\n"
         f"🎩 <b>Welcome to Image Converter Bot</b> — Premium Edition!\n\n"
@@ -314,12 +292,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Telegram → Attach → <b>File</b> → Gallery\n\n"
         f"🚀 <b>Let's get started!</b> Drop an image below 👇"
     )
-
-    await update.message.reply_text(
-        text,
-        parse_mode=ParseMode.HTML,
-        reply_markup=main_keyboard(),
-    )
+    
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=main_keyboard())
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -341,12 +315,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "  /cancel — Cancel ongoing operation\n\n"
         "👨‍💻 <b>Developer:</b> @SDevX2"
     )
-
-    await update.message.reply_text(
-        text,
-        parse_mode=ParseMode.HTML,
-        reply_markup=main_keyboard(),
-    )
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=main_keyboard())
 
 
 async def cmd_about(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -361,12 +330,7 @@ async def cmd_about(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Your images are stored temporarily and automatically deleted after 5 minutes. No images are kept permanently.\n\n"
         "👨‍💻 <b>Developer:</b> @SDevX2"
     )
-
-    await update.message.reply_text(
-        text,
-        parse_mode=ParseMode.HTML,
-        reply_markup=main_keyboard(),
-    )
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=main_keyboard())
 
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -380,7 +344,6 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     quality_label = _quality_label(state["quality"] or "high")
-
     text = (
         "📋 <b>Your Current Session:</b>\n\n"
         f"🖼 Images: <b>{len(state['files'])}</b>\n"
@@ -390,12 +353,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"✅ Original Quality: <b>{'Yes' if state['is_original'] else 'No (sent as Photo)'}</b>\n\n"
         "Use /cancel to abort."
     )
-
-    await update.message.reply_text(
-        text,
-        parse_mode=ParseMode.HTML,
-        reply_markup=main_keyboard(),
-    )
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=main_keyboard())
 
 
 async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -404,15 +362,9 @@ async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if state and state.get("files"):
         cleanup_batch(state["files"])
         gc.collect()
-        await update.message.reply_text(
-            "❌ Operation cancelled. All temp files have been purged.",
-            reply_markup=main_keyboard(),
-        )
+        await update.message.reply_text("❌ Operation cancelled. All temp files have been purged.", reply_markup=main_keyboard())
     else:
-        await update.message.reply_text(
-            "No active operation to cancel.",
-            reply_markup=main_keyboard(),
-        )
+        await update.message.reply_text("No active operation to cancel.", reply_markup=main_keyboard())
 
 
 # ══════════════════════════════════════════════
@@ -425,8 +377,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if uid in user_state and len(user_state[uid]["files"]) >= MAX_BATCH:
         await update.message.reply_text(
-            f"⚠️ Maximum {MAX_BATCH} images allowed in one batch.\n"
-            "Convert them or use /cancel to reset.",
+            f"⚠️ Maximum {MAX_BATCH} images allowed in one batch.\nConvert them or use /cancel to reset.",
             reply_markup=main_keyboard(),
         )
         return
@@ -468,8 +419,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if uid in user_state and len(user_state[uid]["files"]) >= MAX_BATCH:
         await update.message.reply_text(
-            f"⚠️ Maximum {MAX_BATCH} images per batch reached.\n"
-            "Convert or /cancel to start fresh.",
+            f"⚠️ Maximum {MAX_BATCH} images per batch reached.\nConvert or /cancel to start fresh.",
             reply_markup=main_keyboard(),
         )
         return
@@ -500,28 +450,20 @@ async def handle_text_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     if text in ("🖼 Convert", "Convert"):
         await update.message.reply_text(
-            "📎 Send your image as <b>File</b> for best quality.\n\n"
-            "Telegram → Attach → <b>File</b> → Gallery",
+            "📎 Send your image as <b>File</b> for best quality.\n\nTelegram → Attach → <b>File</b> → Gallery",
             parse_mode=ParseMode.HTML,
             reply_markup=main_keyboard(),
         )
     elif text in ("📦 Batch", "Batch"):
         await update.message.reply_text(
-            f"📦 Send up to <b>{MAX_BATCH}</b> images as <b>Files</b>.\n\n"
-            "Once all images are sent, choose your format and I'll convert them all!",
+            f"📦 Send up to <b>{MAX_BATCH}</b> images as <b>Files</b>.\n\nOnce all images are sent, choose your format and I'll convert them all!",
             parse_mode=ParseMode.HTML,
             reply_markup=main_keyboard(),
         )
     elif text in ("📐 Resize", "Resize"):
-        await update.message.reply_text(
-            "📐 Send an image first, then you can select a resize preset during conversion.",
-            reply_markup=main_keyboard(),
-        )
+        await update.message.reply_text("📐 Send an image first, then you can select a resize preset during conversion.", reply_markup=main_keyboard())
     elif text in ("🗜 Compress", "Compress"):
-        await update.message.reply_text(
-            "🗜 Send an image first, then choose a quality level during conversion.",
-            reply_markup=main_keyboard(),
-        )
+        await update.message.reply_text("🗜 Send an image first, then choose a quality level during conversion.", reply_markup=main_keyboard())
     elif text in ("❓ Help", "Help"):
         await cmd_help(update, context)
     elif text in ("ℹ️ About", "About"):
@@ -541,11 +483,7 @@ async def on_cancel_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cleanup_batch(state["files"])
         gc.collect()
     await query.edit_message_text("❌ Cancelled.")
-    await context.bot.send_message(
-        chat_id=query.message.chat_id,
-        text="Send a new image to start!",
-        reply_markup=main_keyboard(),
-    )
+    await context.bot.send_message(chat_id=query.message.chat_id, text="Send a new image to start!", reply_markup=main_keyboard())
 
 
 async def on_format_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -562,9 +500,7 @@ async def on_format_selected(update: Update, context: ContextTypes.DEFAULT_TYPE)
     count = len(user_state[uid]["files"])
 
     await query.edit_message_text(
-        f"✅ <b>Format:</b> {fmt.upper()}\n"
-        f"🖼 <b>Images:</b> {count}\n\n"
-        f"🎚 <b>Select Quality:</b>",
+        f"✅ <b>Format:</b> {fmt.upper()}\n🖼 <b>Images:</b> {count}\n\n🎚 <b>Select Quality:</b>",
         parse_mode=ParseMode.HTML,
         reply_markup=quality_keyboard(),
     )
@@ -711,15 +647,13 @@ def main():
         print("   export BOT_TOKEN='your_token_here'")
         return
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
     app = (
         Application.builder()
         .token(BOT_TOKEN)
         .concurrent_updates(True)
         .build()
     )
+    app.add_error_handler(error_handler)
 
     # Commands
     app.add_handler(CommandHandler("start",  cmd_start))
@@ -736,7 +670,7 @@ def main():
     # Callbacks
     app.add_handler(CallbackQueryHandler(on_cancel_action,   pattern=r"^action_cancel$"))
     app.add_handler(CallbackQueryHandler(on_format_selected, pattern=r"^fmt_"))
-    app.add_handler(CallbackQueryHandler(on_quality_selected,pattern=r"^q_"))
+    app.add_handler(CallbackQueryHandler(on_quality_selected,  pattern=r"^q_"))
     app.add_handler(CallbackQueryHandler(on_resize_selected, pattern=r"^resize_"))
     app.add_handler(CallbackQueryHandler(on_output_selected, pattern=r"^out_"))
 
@@ -752,7 +686,7 @@ def main():
             drop_pending_updates=True,
         )
     else:
-        logger.info("Polling mode (local dev / Termux)")
+        logger.info("Webhook URL not set — falling back to polling")
         app.run_polling(drop_pending_updates=True)
 
 
