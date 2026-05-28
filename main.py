@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-✨ Image Converter Bot — Multi-User Edition
-Supports concurrent processing for multiple users
+Image Converter Bot — Multi-User Premium Edition
 """
 
 import os
@@ -58,12 +57,11 @@ logger = logging.getLogger(__name__)
 user_state: dict = {}
 file_timestamps: dict = {}
 
-# 🔥 THREAD POOL for non-blocking image processing
 executor = ThreadPoolExecutor(max_workers=4)
 
 
 # ══════════════════════════════════════════════
-#  PREMIUM KEYBOARDS
+#  KEYBOARDS
 # ══════════════════════════════════════════════
 
 def main_keyboard() -> ReplyKeyboardMarkup:
@@ -146,7 +144,7 @@ def output_keyboard() -> InlineKeyboardMarkup:
 
 
 # ══════════════════════════════════════════════
-#  CONVERTER ENGINE (CPU-heavy, runs in thread)
+#  CONVERTER ENGINE
 # ══════════════════════════════════════════════
 
 def get_image_info(path: str) -> dict:
@@ -164,7 +162,6 @@ def get_image_info(path: str) -> dict:
 
 
 def convert_image_sync(input_path: str, fmt: str, quality: str, resize: str | None) -> str:
-    """SYNC function — runs in ThreadPool so it doesn't block the bot."""
     with Image.open(input_path) as img:
         img = img.copy()
 
@@ -228,7 +225,6 @@ def convert_image_sync(input_path: str, fmt: str, quality: str, resize: str | No
 
 
 async def convert_image_async(input_path: str, fmt: str, quality: str, resize: str | None) -> str:
-    """ASYNC wrapper — runs sync function in thread pool."""
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(
         executor, convert_image_sync, input_path, fmt, quality, resize
@@ -291,30 +287,17 @@ def _quality_label(quality: str) -> str:
 
 
 # ══════════════════════════════════════════════
-#  ERROR HANDLER
-# ══════════════════════════════════════════════
-
-async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    logger.error("Unhandled exception:", exc_info=context.error)
-    if update and hasattr(update, "message") and update.message:
-        try:
-            await update.message.reply_text(
-                "⚠️ Something went wrong. Please try again!",
-                reply_markup=main_keyboard(),
-            )
-        except Exception:
-            pass
-
-
-# ══════════════════════════════════════════════
 #  COMMANDS
 # ══════════════════════════════════════════════
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    name = update.effective_user.first_name or "Friend"
-    await update.message.reply_text(
+    # 🔥 USER NAME GREETING — এটা কাজ করবে!
+    user = update.effective_user
+    name = user.first_name if user and user.first_name else "Friend"
+
+    text = (
         f"👋 <b>Hey {name}!</b>\n\n"
-        f"🎩 <b>Welcome to Image Converter Bot</b> — Multi-User Edition!\n\n"
+        f"🎩 <b>Welcome to Image Converter Bot</b> — Premium Edition!\n\n"
         f"🔄 <b>Supported Formats:</b>\n"
         f"   JPG · PNG · WEBP · BMP · GIF · ICO · TIFF\n\n"
         f"✨ <b>What I can do:</b>\n"
@@ -329,14 +312,18 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💡 <b>Pro Tip:</b>\n"
         f"Send images as <b>File</b> (not Photo) to keep original quality!\n"
         f"Telegram → Attach → <b>File</b> → Gallery\n\n"
-        f"🚀 <b>Let's get started!</b> Drop an image below 👇",
+        f"🚀 <b>Let's get started!</b> Drop an image below 👇"
+    )
+
+    await update.message.reply_text(
+        text,
         parse_mode=ParseMode.HTML,
         reply_markup=main_keyboard(),
     )
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
+    text = (
         "📖 <b>How to use this bot:</b>\n\n"
         "1️⃣ Send your image as <b>File</b> (for original quality)\n"
         "   ⚠️ Sending as Photo compresses it via Telegram\n\n"
@@ -352,14 +339,18 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "  /about — Bot info & credits\n"
         "  /status — Check your current session\n"
         "  /cancel — Cancel ongoing operation\n\n"
-        "👨‍💻 <b>Developer:</b> @SDevX2",
+        "👨‍💻 <b>Developer:</b> @SDevX2"
+    )
+
+    await update.message.reply_text(
+        text,
         parse_mode=ParseMode.HTML,
         reply_markup=main_keyboard(),
     )
 
 
 async def cmd_about(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
+    text = (
         "🤖 <b>Image Converter Bot</b> — Multi-User Edition\n\n"
         "A powerful image conversion tool built for Telegram.\n\n"
         "🔄 <b>Formats:</b> JPG · PNG · WEBP · BMP · GIF · ICO · TIFF\n"
@@ -367,8 +358,12 @@ async def cmd_about(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "☁️ <b>Hosted on:</b> Render (free tier optimized)\n"
         "🧵 <b>Threads:</b> 4 workers for concurrent processing\n\n"
         "🔒 <b>Privacy Policy:</b>\n"
-        "Your images are stored temporarily on our server and automatically deleted after 5 minutes. No images are kept permanently.\n\n"
-        "👨‍💻 <b>Developer:</b> @SDevX2",
+        "Your images are stored temporarily and automatically deleted after 5 minutes. No images are kept permanently.\n\n"
+        "👨‍💻 <b>Developer:</b> @SDevX2"
+    )
+
+    await update.message.reply_text(
+        text,
         parse_mode=ParseMode.HTML,
         reply_markup=main_keyboard(),
     )
@@ -385,14 +380,19 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     quality_label = _quality_label(state["quality"] or "high")
-    await update.message.reply_text(
+
+    text = (
         "📋 <b>Your Current Session:</b>\n\n"
         f"🖼 Images: <b>{len(state['files'])}</b>\n"
         f"🔄 Format: <b>{state['format'] or 'Not selected'}</b>\n"
         f"🎚 Quality: <b>{quality_label}</b>\n"
         f"📐 Resize: <b>{state['resize'] or 'None'}</b>\n"
         f"✅ Original Quality: <b>{'Yes' if state['is_original'] else 'No (sent as Photo)'}</b>\n\n"
-        "Use /cancel to abort.",
+        "Use /cancel to abort."
+    )
+
+    await update.message.reply_text(
+        text,
         parse_mode=ParseMode.HTML,
         reply_markup=main_keyboard(),
     )
@@ -642,7 +642,6 @@ async def on_output_selected(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     output_files, errors = [], []
 
-    # 🔥 RUN CONVERSION IN THREAD POOL — doesn't block other users!
     for fpath in files:
         try:
             out = await convert_image_async(fpath, fmt, quality, resize)
@@ -652,7 +651,6 @@ async def on_output_selected(update: Update, context: ContextTypes.DEFAULT_TYPE)
         except Exception as e:
             errors.append(f"{os.path.basename(fpath)}: {e}")
 
-    # Send output
     if output_files:
         if send_as_zip:
             try:
@@ -680,7 +678,6 @@ async def on_output_selected(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 except Exception as e:
                     errors.append(f"Send error: {e}")
 
-    # Summary
     summary = (
         f"🎉 <b>Conversion Complete!</b>\n\n"
         f"✅ Converted: {len(output_files)}\n"
@@ -696,7 +693,6 @@ async def on_output_selected(update: Update, context: ContextTypes.DEFAULT_TYPE)
         reply_markup=main_keyboard(),
     )
 
-    # Cleanup
     for f in files + output_files:
         file_timestamps.pop(f, None)
     cleanup_batch(files)
@@ -718,14 +714,12 @@ def main():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
-    # 🔥 Enable concurrent updates for multi-user support
     app = (
         Application.builder()
         .token(BOT_TOKEN)
-        .concurrent_updates(True)  # ← THIS IS KEY!
+        .concurrent_updates(True)
         .build()
     )
-    app.add_error_handler(error_handler)
 
     # Commands
     app.add_handler(CommandHandler("start",  cmd_start))
