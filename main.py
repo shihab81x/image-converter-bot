@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-Image Converter Bot — Render Ready
-Multi-user | Webhook | No Termux reference
+Image Converter Bot — Render Ready (Python 3.14 Compatible)
 """
 
 import os
@@ -638,14 +637,17 @@ async def on_output_selected(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 # ══════════════════════════════════════════════
-#  MAIN
+#  MAIN — PYTHON 3.14 FIX HERE
 # ══════════════════════════════════════════════
 
 def main():
     if not BOT_TOKEN:
         print("ERROR: Set BOT_TOKEN environment variable!")
-        print("   export BOT_TOKEN='your_token_here'")
         return
+
+    # ✅ FIX: Explicit event loop for Python 3.14+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
     app = (
         Application.builder()
@@ -675,9 +677,9 @@ def main():
     app.add_handler(CallbackQueryHandler(on_output_selected, pattern=r"^out_"))
 
     if WEBHOOK_URL:
-        webhook_path     = "/webhook"
+        webhook_path = "/webhook"
         full_webhook_url = f"{WEBHOOK_URL}{webhook_path}"
-        logger.info(f"Webhook mode → {full_webhook_url}  port={PORT}")
+        logger.info(f"Webhook mode → {full_webhook_url} port={PORT}")
         app.run_webhook(
             listen="0.0.0.0",
             port=PORT,
